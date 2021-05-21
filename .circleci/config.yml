@@ -1,0 +1,60 @@
+version: 2.1
+
+orbs:
+  docker: circleci/docker@1.5.0
+
+executors:
+  node:
+    docker:
+      - image: circleci/node:14.16.1
+
+commands:
+  yarn_install:
+    parameters:
+      cache_key:
+        type: string
+    steps:
+      - restore_cache:
+          keys:
+            - yarn-install-<< parameters.cache_key >>-{{ checksum "package.json" }}-{{ checksum "yarn.lock" }}
+            - yarn-install-<< parameters.cache_key >>-{{ checksum "package.json" }}
+            - yarn-install-<< parameters.cache_key >>
+          paths:
+            - node_modules
+      - run:
+          command: yarn install --frozen-lockfile
+      - save_cache:
+          key: yarn-install-<< parameters.cache_key >>-{{ checksum "package.json" }}-{{ checksum "yarn.lock" }}
+          paths:
+            - node_modules
+
+jobs:
+  typescript_stack-install:  
+    executor: node
+    working_directory: ~/project/typescript_stack
+    steps:
+      - checkout:
+          path: ~/project
+      - yarn_install:
+          cache_key: typescript_stack
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - typescript_stack/node_modules
+  typescript_stack-check:
+    executor: node
+    steps:
+      - checkout
+      - attach_workspace:
+          at: ~/project
+      - run:
+          name: TypeCheck + Lint + Test:Coverage + Test:Mutation
+          command: cd typescript_stack && yarn ci
+
+workflows:
+  weekly_warmup_ci: 
+    jobs:
+      - typescript_stack-install
+      - typescript_stack-check:
+          requires:
+            - typescript_stack-install
